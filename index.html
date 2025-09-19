@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>DWDM TSV → XLSX Merger</title>
+  <style>
+    :root{--bg:#0b0d10;--fg:#e8eef6;--card:#11151b;--muted:#9db1c9;--acc:#4da3ff;--green:#3ecf8e}
+    *{box-sizing:border-box}
+    body{background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif;margin:0;padding:0}
+    .wrap{max-width:980px;margin:40px auto;padding:0 16px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+    h1{font-size:20px;margin:0}
+    .card{background:var(--card);border:1px solid #1c2128;border-radius:16px;padding:16px}
+    input[type=file]{width:100%;padding:12px;background:#0f1318;border:1px dashed #2a3340;border-radius:12px;color:var(--muted)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    button{padding:10px 14px;border-radius:12px;border:1px solid #2a3340;background:#0f1318;color:var(--fg);cursor:pointer}
+    button.primary{background:var(--acc);border-color:var(--acc);color:#001428}
+    .muted{color:var(--muted);font-size:13px}
+    .preview{max-height:420px;overflow:auto;border:1px solid #1c2128;border-radius:12px;margin-top:12px}
+    table{border-collapse:collapse;width:100%}
+    th,td{border:1px solid #222a35;padding:6px 8px;font-size:12px}
+    th{background:#0f1823}
+    footer{margin-top:24px;color:var(--muted);font-size:12px;text-align:center}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>DWDM TSV → XLSX Merger</h1>
+      <div class="muted">C‑band grid 12.5 GHz · merges vertical repeats · colors FREE/occupied</div>
+    </header>
+
+    <div class="card">
+      <input id="files" type="file" multiple accept=".tsv,.csv,.txt"/>
+      <div class="row">
+        <button id="btnPreview">Preview</button>
+        <button id="btnMerge" class="primary">Merge → Download XLSX</button>
+      </div>
+      <div id="note" class="muted" style="margin-top:8px">
+        Upload 1..N OCM TSV/CSV dumps. Columns used: <b>Circuit ID</b> and <b>passband list</b>.
+      </div>
+      <div id="preview" class="preview" style="display:none"></div>
+    </div>
+
+    <footer>© DWDM Tools</footer>
+  </div>
+
+  <script>
+    function buildFormData(files) {
+      const fd = new FormData();
+      for (const f of files) fd.append('files', f, f.name);
+      return fd;
+    }
+    function $(id){return document.getElementById(id);}
+
+    $('btnPreview').onclick = async () => {
+      const files = $('files').files;
+      if (!files.length) { alert('Choose files first'); return; }
+      $('preview').style.display='block';
+      $('preview').innerHTML='Generating preview...';
+      const res = await fetch('/preview', {method:'POST', body: buildFormData(files)});
+      $('preview').innerHTML = await res.text();
+    };
+
+    $('btnMerge').onclick = async () => {
+      const files = $('files').files;
+      if (!files.length) { alert('Choose files first'); return; }
+      const res = await fetch('/merge', {method:'POST', body: buildFormData(files)});
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'merged_result.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    };
+  </script>
+</body>
+</html>

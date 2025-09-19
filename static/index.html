@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Optical circuits merger</title>
+  <style>
+    :root{
+      --bg:#0b0f14; --fg:#e8eef6; --muted:#a6b3c2; --card:#0f141b;
+      --border:#1c2430; --acc:#4da3ff; --acc-600:#2b8bf3;
+      --free:#c6efce; --occupied:#ccecff; --yellow:#fff2cc;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0; background:#0b0f14; color:var(--fg); font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif;}
+    .wrap{max-width:1080px; margin:32px auto; padding:0 16px}
+    header{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px}
+    h1{font-size:22px; margin:0}
+    .badge{font-size:12px; color:#06223f; background:linear-gradient(180deg,#cfe7ff,#9dd0ff);
+      padding:6px 10px; border-radius:999px; border:1px solid #9cc7ff66}
+    .card{background:#0f141b; border:1px solid var(--border); border-radius:16px; padding:16px}
+    .grid{display:grid; grid-template-columns: 1.3fr .7fr; gap:16px}
+    @media (max-width: 980px){ .grid{grid-template-columns:1fr}}
+
+    .drop{border:2px dashed #2a3444; border-radius:14px; padding:18px; text-align:center; background:#0d131a; cursor:pointer;}
+    .drop.dragover{ background:#0f1823; border-color:#3c4a60 }
+    .drop svg{width:36px; height:36px;}
+    .hint{color:var(--muted); font-size:13px; margin-top:8px}
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px}
+    button{padding:10px 14px; border-radius:12px; border:1px solid #2a3340; background:#101722; color:var(--fg); cursor:pointer; font-weight:600}
+    button:disabled{opacity:.6; cursor:not-allowed}
+    .primary{background:var(--acc); border-color:var(--acc); color:#041423}
+    .primary:hover{background:var(--acc-600); border-color:var(--acc-600)}
+    .ghost:hover{border-color:#3a4658}
+    .legend{display:flex; gap:8px; align-items:center; color:var(--muted); font-size:12px}
+    .box{width:14px;height:14px;border:1px solid #1e2a38;border-radius:4px}
+    .free{background:var(--free)} .busy{background:var(--occupied)} .yellow{background:var(--yellow)}
+
+    .preview{max-height:520px; overflow:auto; border:1px solid var(--border); border-radius:12px; margin-top:10px}
+    table{border-collapse:collapse; width:100%}
+    th,td{border:1px solid #223046; padding:6px 8px; font-size:12px}
+    th{position:sticky; top:0; background:#0f1823; z-index:1}
+    tr:nth-child(odd) td{background:#0c1219} tr:nth-child(even) td{background:#0a1016}
+
+    /* Редактор списка файлов */
+    .filelist{margin-top:10px; display:flex; flex-direction:column; gap:8px}
+    .file-row{display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid #273244; background:#0e141c; border-radius:12px}
+    .file-row .idx{min-width:26px; text-align:center; opacity:.6}
+    .file-row .fname{flex:1; opacity:.9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+    .file-row input.colname{width:260px; padding:6px 8px; border-radius:8px; border:1px solid #2a3340; background:#101722; color:var(--fg)}
+    .file-row .btn{ padding:6px 9px; border-radius:8px; border:1px solid #2a3340; background:#17212b; color:var(--fg); cursor:pointer}
+    .file-row .btn:hover{border-color:#3a4658}
+    .file-row .danger{ background:#3b1e1e; border-color:#5a2a2a }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Optical circuits merger</h1>
+      <span class="badge">RETN</span>
+    </header>
+
+    <div class="grid">
+      <div class="card">
+        <div id="drop" class="drop" tabindex="0" role="button" aria-label="Upload files">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><path stroke="#69b6ff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.4" d="M3 15v3a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3M7 10l5-5m0 0 5 5m-5-5v12"/></svg>
+          <div style="font-weight:600; margin-top:6px">Перетащи файлы сюда или кликни</div>
+          <div class="hint">Поддерживаются TSV / CSV / TXT. Используются колонки <b>Circuit ID</b>, <b>passband list</b>, <b>Freq Slot Plan Type</b> (если есть).
+            Если присутствует <b>#Type</b> — строки с <b>REMOTE_OPTICAL_SNC</b> игнорируются.</div>
+          <input id="fileInput" type="file" multiple accept=".tsv,.csv,.txt" style="display:none"/>
+        </div>
+
+        <div class="row">
+          <button class="ghost" id="btnClear" disabled>Очистить</button>
+          <button class="ghost" id="btnPreview" disabled>Preview</button>
+          <button class="primary" id="btnMerge" disabled>DOWNLOAD results of merge</button>
+          <div class="legend" style="margin-left:auto">
+            <span class="box free"></span> FREE
+            <span class="box busy"></span> Base
+            <span class="box yellow"></span> OCG extra
+          </div>
+        </div>
+
+        <!-- Редактируемый список (порядок и имена колонок) -->
+        <div id="filesList" class="filelist"></div>
+      </div>
+
+      <div class="card">
+        <div class="hint" style="margin-bottom:6px">Предпросмотр (первые ~150 строк):</div>
+        <div id="preview" class="preview"><div class="hint" style="padding:8px 10px">Пока пусто — добавь файлы, задай порядок/названия и нажми Preview.</div></div>
+      </div>
+    </div>
+
+    <footer>© kartemev / RETN AM</footer>
+  </div>
+
+<script>
+(() => {
+  const drop = document.getElementById('drop');
+  const input = document.getElementById('fileInput');
+  const filesList = document.getElementById('filesList');
+  const preview = document.getElementById('preview');
+  const btnPreview = document.getElementById('btnPreview');
+  const btnMerge = document.getElementById('btnMerge');
+  const btnClear = document.getElementById('btnClear');
+
+  // [{file: File, name: string}]
+  let filesArr = [];
+
+  function refreshUI(){
+    filesList.innerHTML = '';
+    if(filesArr.length){
+      filesArr.forEach((item, idx) => {
+        const row = document.createElement('div');
+        row.className = 'file-row';
+        row.innerHTML = `
+          <span class="idx">${idx+1}</span>
+          <span class="fname" title="${item.file.name}">${item.file.name}</span>
+          <input class="colname" type="text" value="${item.name}" title="Название колонки">
+          <button class="btn" data-up="${idx}" title="Вверх">↑</button>
+          <button class="btn" data-down="${idx}" title="Вниз">↓</button>
+          <button class="btn danger" data-rm="${idx}" title="Удалить">✖</button>
+        `;
+        filesList.appendChild(row);
+        row.querySelector('.colname').addEventListener('input', (e)=>{
+          filesArr[idx].name = e.target.value;
+        });
+      });
+      btnPreview.disabled = false; btnMerge.disabled = false; btnClear.disabled = false;
+    } else {
+      btnPreview.disabled = true; btnMerge.disabled = true; btnClear.disabled = true;
+    }
+  }
+
+  function addFiles(list){
+    for(const f of list){ filesArr.push({ file: f, name: f.name }); }
+    refreshUI();
+  }
+
+  // План: порядок и пользовательские имена колонок
+  function buildPlan(){
+    const order = Array.from({length: filesArr.length}, (_,i)=>i); // текущий порядок = порядок загрузки
+    const names = filesArr.map(item => item.name || item.file.name);
+    return JSON.stringify({ order, names });
+  }
+
+  function buildFormData(){
+    const fd = new FormData();
+    // отправляем файлы в текущем порядке
+    filesArr.forEach((item) => fd.append('files', item.file, item.file.name));
+    fd.append('plan', buildPlan()); // порядок + имена
+    return fd;
+  }
+
+  // DnD / выбор
+  drop.addEventListener('click', () => input.click());
+  drop.addEventListener('dragover', (e)=>{ e.preventDefault(); drop.classList.add('dragover'); });
+  drop.addEventListener('dragleave', ()=> drop.classList.remove('dragover'));
+  drop.addEventListener('drop', (e)=>{ e.preventDefault(); drop.classList.remove('dragover'); if(e.dataTransfer.files?.length) addFiles(e.dataTransfer.files); });
+  input.addEventListener('change', (e)=> addFiles(e.target.files));
+
+  // Управление списком
+  filesList.addEventListener('click', (e)=>{
+    const up = e.target.getAttribute('data-up');
+    const dn = e.target.getAttribute('data-down');
+    const rm = e.target.getAttribute('data-rm');
+    if(up !== null){
+      const i = +up; if(i>0){ [filesArr[i-1], filesArr[i]] = [filesArr[i], filesArr[i-1]]; refreshUI(); }
+    }else if(dn !== null){
+      const i = +dn; if(i<filesArr.length-1){ [filesArr[i+1], filesArr[i]] = [filesArr[i], filesArr[i+1]]; refreshUI(); }
+    }else if(rm !== null){
+      const i = +rm; filesArr.splice(i,1); refreshUI();
+    }
+  });
+
+  btnClear.addEventListener('click', ()=>{
+    filesArr = []; input.value=''; refreshUI();
+    preview.innerHTML = '<div class="hint" style="padding:8px 10px">Пока пусто — добавь файлы, задай порядок/названия и нажми Preview.</div>';
+  });
+
+  // Preview
+  btnPreview.addEventListener('click', async ()=>{
+    try{
+      const res = await fetch('/preview', { method:'POST', body: buildFormData() });
+      if(!res.ok) throw new Error('Preview failed: '+res.status);
+      preview.innerHTML = await res.text();
+    }catch(err){
+      preview.innerHTML = '<div class="hint" style="padding:8px 10px; color:#f88">Ошибка предпросмотра: '+err.message+'</div>';
+    }
+  });
+
+  // Merge → download (используем имя из Content-Disposition)
+  btnMerge.addEventListener('click', async ()=>{
+    try{
+      const res = await fetch('/merge', { method:'POST', body: buildFormData() });
+      if(!res.ok) throw new Error('Merge failed: '+res.status);
+
+      // Пытаемся вытащить имя из заголовка
+      const cd = res.headers.get('Content-Disposition') || '';
+      let fname = 'merged_result.xlsx';
+      // RFC 5987 (filename*)
+      const mUtf = cd.match(/filename\*=UTF-8''([^;]+)/i);
+      // "обычный" filename="..."
+      const mQ   = cd.match(/filename="([^"]+)"/i);
+      if (mUtf && mUtf[1]) {
+        try { fname = decodeURIComponent(mUtf[1]); } catch(_){}
+      } else if (mQ && mQ[1]) {
+        fname = mQ[1];
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fname; // ← имя с сервера (например optical_circuits_merge_1407_19092025.xlsx)
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }catch(err){
+      alert('Ошибка сборки: ' + err.message);
+    }
+  });
+})();
+</script>
+</body>
+</html>
