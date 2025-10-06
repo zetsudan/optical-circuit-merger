@@ -35,6 +35,7 @@
     .legend{display:flex; gap:8px; align-items:center; color:var(--muted); font-size:12px}
     .box{width:14px;height:14px;border:1px solid #1e2a38;border-radius:4px}
     .free{background:var(--free)} .busy{background:var(--occupied)} .yellow{background:var(--yellow)}
+    .toggle{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
 
     .preview{max-height:520px; overflow:auto; border:1px solid var(--border); border-radius:12px; margin-top:10px}
     table{border-collapse:collapse; width:100%}
@@ -42,7 +43,6 @@
     th{position:sticky; top:0; background:#0f1823; z-index:1}
     tr:nth-child(odd) td{background:#0c1219} tr:nth-child(even) td{background:#0a1016}
 
-    /* File list editor */
     .filelist{margin-top:10px; display:flex; flex-direction:column; gap:8px}
     .file-row{display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid #273244; background:#0e141c; border-radius:12px}
     .file-row .idx{min-width:26px; text-align:center; opacity:.6}
@@ -51,33 +51,12 @@
     .file-row .btn{ padding:6px 9px; border-radius:8px; border:1px solid #2a3340; background:#17212b; color:var(--fg); cursor:pointer}
     .file-row .btn:hover{border-color:#3a4658}
     .file-row .danger{ background:#3b1e1e; border-color:#5a2a2a }
-
-    /* Help tooltip */
-    .help-wrap{display:flex; align-items:center; gap:10px}
-    .help{position:relative}
-    .help-btn{padding:6px 10px; border-radius:999px; border:1px solid #2a3340; background:#0f1823; color:var(--fg); font-weight:700; font-size:12px; cursor:pointer}
-    .help-content{position:absolute; top:120%; left:0; width:340px; background:#0f141b; border:1px solid var(--border); border-radius:12px; padding:12px; display:none; box-shadow:0 10px 30px rgba(0,0,0,.35); z-index:5}
-    .help-content p{margin:0 0 6px 0; font-size:13px; color:var(--muted)}
-    .help:focus-within .help-content,
-    .help:hover .help-content{display:block}
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <div class="help-wrap">
-        <h1>Optical circuits merger</h1>
-        <div class="help">
-          <button id="helpBtn" class="help-btn" aria-haspopup="true" aria-expanded="false" aria-controls="helpTip" title="How it works">?</button>
-          <div id="helpTip" role="dialog" class="help-content" aria-label="How it works">
-            <p><b>How it works:</b></p>
-            <p>1) Drag & drop multiple TSV/CSV/TXT files or click the area to select them.</p>
-            <p>2) In the list below, adjust the order and set display names for columns.</p>
-            <p>3) Click <b>Preview</b> to see the first ~150 rows.</p>
-            <p>4) Click <b>Download merged results</b> to get the final Excel file. If <b>#Type</b> is present, rows with <b>REMOTE_OPTICAL_SNC</b> are ignored.</p>
-          </div>
-        </div>
-      </div>
+      <h1>Optical circuits merger</h1>
       <span class="badge">RETN</span>
     </header>
 
@@ -86,12 +65,13 @@
         <div id="drop" class="drop" tabindex="0" role="button" aria-label="Upload files">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><path stroke="#69b6ff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.4" d="M3 15v3a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3M7 10l5-5m0 0 5 5m-5-5v12"/></svg>
           <div style="font-weight:600; margin-top:6px">Drag files here or click</div>
-          <div class="hint">Supported: TSV / CSV / TXT. Uses columns <b>Circuit ID</b>, <b>passband list</b>, <b>Freq Slot Plan Type</b> (if present).
+          <div class="hint">Supported: TSV / CSV / TXT. Uses columns <b>Circuit ID</b>, <b>passband list</b>, <b>Freq Slot Plan Type</b> (if present), and <b>Label</b> (if present).
             If <b>#Type</b> is present — rows with <b>REMOTE_OPTICAL_SNC</b> are ignored.</div>
           <input id="fileInput" type="file" multiple accept=".tsv,.csv,.txt" style="display:none"/>
         </div>
 
         <div class="row">
+          <label class="toggle"><input id="includeLabel" type="checkbox"> Include Label</label>
           <button class="ghost" id="btnClear" disabled>Clear</button>
           <button class="ghost" id="btnPreview" disabled>Preview</button>
           <button class="primary" id="btnMerge" disabled>Download merged results</button>
@@ -102,7 +82,6 @@
           </div>
         </div>
 
-        <!-- Editable list (order & column names) -->
         <div id="filesList" class="filelist"></div>
       </div>
 
@@ -124,9 +103,8 @@
   const btnPreview = document.getElementById('btnPreview');
   const btnMerge = document.getElementById('btnMerge');
   const btnClear = document.getElementById('btnClear');
-  const helpBtn = document.getElementById('helpBtn');
+  const cbLabel = document.getElementById('includeLabel');
 
-  // [{file: File, name: string}]
   let filesArr = [];
 
   function refreshUI(){
@@ -159,29 +137,26 @@
     refreshUI();
   }
 
-  // Plan: order and user-defined column names
   function buildPlan(){
-    const order = Array.from({length: filesArr.length}, (_,i)=>i); // current order = upload order
+    const order = Array.from({length: filesArr.length}, (_,i)=>i);
     const names = filesArr.map(item => item.name || item.file.name);
     return JSON.stringify({ order, names });
   }
 
   function buildFormData(){
     const fd = new FormData();
-    // send files in current order
     filesArr.forEach((item) => fd.append('files', item.file, item.file.name));
-    fd.append('plan', buildPlan()); // order + names
+    fd.append('plan', buildPlan());
+    fd.append('include_label', cbLabel && cbLabel.checked ? '1' : '0');
     return fd;
   }
 
-  // DnD / picker
   drop.addEventListener('click', () => input.click());
   drop.addEventListener('dragover', (e)=>{ e.preventDefault(); drop.classList.add('dragover'); });
   drop.addEventListener('dragleave', ()=> drop.classList.remove('dragover'));
   drop.addEventListener('drop', (e)=>{ e.preventDefault(); drop.classList.remove('dragover'); if(e.dataTransfer.files?.length) addFiles(e.dataTransfer.files); });
   input.addEventListener('change', (e)=> addFiles(e.target.files));
 
-  // Manage list
   filesList.addEventListener('click', (e)=>{
     const up = e.target.getAttribute('data-up');
     const dn = e.target.getAttribute('data-down');
@@ -200,7 +175,6 @@
     preview.innerHTML = '<div class="hint" style="padding:8px 10px">No data yet — add files, set order/names and click Preview.</div>';
   });
 
-  // Preview
   btnPreview.addEventListener('click', async ()=>{
     try{
       const res = await fetch('/preview', { method:'POST', body: buildFormData() });
@@ -211,18 +185,14 @@
     }
   });
 
-  // Merge → download (use name from Content-Disposition)
   btnMerge.addEventListener('click', async ()=>{
     try{
       const res = await fetch('/merge', { method:'POST', body: buildFormData() });
       if(!res.ok) throw new Error('Merge failed: '+res.status);
 
-      // Try to extract filename from header
       const cd = res.headers.get('Content-Disposition') || '';
       let fname = 'merged_result.xlsx';
-      // RFC 5987 (filename*)
       const mUtf = cd.match(/filename\*=UTF-8''([^;]+)/i);
-      // regular filename="..."
       const mQ   = cd.match(/filename="([^"]+)"/i);
       if (mUtf && mUtf[1]) {
         try { fname = decodeURIComponent(mUtf[1]); } catch(_){}
@@ -234,7 +204,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = fname; // e.g. optical_circuits_merge_1407_19092025.xlsx
+      a.download = fname;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -242,12 +212,6 @@
     }catch(err){
       alert('Merge error: ' + err.message);
     }
-  });
-
-  // Toggle aria-expanded for accessibility
-  helpBtn.addEventListener('click', ()=>{
-    const expanded = helpBtn.getAttribute('aria-expanded') === 'true';
-    helpBtn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
   });
 })();
 </script>

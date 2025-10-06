@@ -1,0 +1,13 @@
+
+services:
+  ocm:
+    build: .
+    image: optical-circuit-merger:latest
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
